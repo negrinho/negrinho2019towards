@@ -1,0 +1,58 @@
+Nasnet:
+The Nasnet search space is a cell-based search space taken from \citet{zoph2018learning}.
+Each cell takes in the outputs of the two previous cells and adds them to its set of hidden states, H.
+Then, two hidden states are randomly chosen with replacement from H, transformed using
+one of eight operations (identity, depth separable 3x3 convolution, depth separable 5x5 convolution,
+depth separable 7x7 convolution, 3x3 average pooling, 3x3 max pooling, 3x3 dilated convolution with rate 2,
+and 1x7 convolution followed by a 7x1 convolution). These two transformed hidden states are then combined using
+addition to form a new hidden state which is then added H. This process is repeated five times.
+Finally, the unused hidden states H are concatenated together to create the output of the cell.
+This process is used to create two types of cells, a normal cell which outputs a state with the same dimensions
+as its input and a reduction cell which doubles the number of filters and halves the spatial dimensions of the inputs.
+The spatial reduction is performed by adding a stride parameter to whichever operation is chosen. The Tensorflow version of
+dilated convolutions does not allow for striding, so we removed the depth separable 3x3 convolution from the set of reduction operations.
+To form the final architecture, six normal cells are stacked followed by a single reduction cell. This pattern is repeated three times,
+with the final repetition not including the final reduction cell. Global average pooling is done on the output of the final cell which
+is then passed through a dense layer with 10 units to form the final logits.
+There were several implementation details not included in the original paper that we tried to recreate to the best of our ability
+from the code provided from \citet{https://github.com/tensorflow/tpu/blob/master/models/official/amoeba_net/network_utils.py} and
+\citet{https://github.com/tensorflow/models/blob/master/research/slim/nets/nasnet/nasnet_utils.py}.
+
+Genetic:
+The genetic search space is a search space from \citet{xie2017genetic}. It is formed by stacking 3 increasingly complex stages.
+Stage $i$ is composed of $k_i$ nodes, where (k_1, k_2, k_3) = (3, 4, 5), in addition to one input node and one output node.
+For each pair of nodes, there is a choice representing whether those two nodes are connected.
+Connections are always from the node with the lower id to the node with the higher id.
+The input node takes its value from
+the output of the previous stage. It then sends its value as input to any node without a predecessor. The output node takes
+its value by summing up any nodes without a successor and performing a convolution. The values for the intermediate nodes are
+computed by summing all inputs to the intermediate node and performing a convolution. All convolutions used in this search space
+use a filter size of 5. The number of filters for each convolution in stage $i$ is $f_i$, where (f_1, f_2, f_3) = (64, 128, 256).
+Note these numbers are the ones used to form the large final architectures in \citet{xie2017genetic}, not the ones they use in the
+search phase which are considerably smaller. Between each stage, there is also max pooling operation with stride 2. Finally, the
+output of the last stage is flattened, passed through a dense layer with 1024 units, a dropout layer with rate $.5$, and
+a dense layer with 10 units which represent the final logits.
+
+Nasbench:
+The Nasbench space is a cell-based search space taken from \citet{ying2019nasbench}. It is formed by stacking 3 cells followed by a
+max pooling layer that halves the spatial dimensions. This is repeated 3 times, followed by a global average pool and a dense layer with
+10 units. The cell search space is a subset of all possible directed acyclic graphs (DAG) with 7 nodes. The first node in the DAG is the input
+node that takes the output of the previous cell as its value. The output node is the last node in the DAG. Each DAG must have 9 or fewer edges.
+For each node that is connected to any other node, there must be a path from the input node to the output node that includes that node.
+Each of the intermediate nodes is labelled with one of 3 operations: 3x3 convolution, 1x1 convolution, and 3x3 max-pool. The inputs to that node
+are summed together and transformed with the operation corresponding to that node. The value of the output node is computed by simply concatenating
+all of the inputs to the output node.
+
+Flat:
+The Flat space is taken from \citet{liu2017hierarchical}. The search spaces are designed in terms of motifs. A motif is an operation represented by a graph
+where the edges are operations corresponding to lower level motifs. Level 1 motifs are the primitive operations:
+{1 × 1 convolution, 3 × 3 depthwise convolution, 3 × 3 separable convolution, 3 × 3 max-pooling, 3 × 3 average-pooling, identity}.
+For the Flat search space, the level 2 motif is represented by a graph with 11 nodes where the edges are level 1 motifs. This level 2 motif is then stacked
+6 times with separable convolutions between them, followed by a global average pooling and a dense layer to form the final architecture. After every 2 motifs,
+the number of filters in the output is also doubled.
+In the paper describing this search space, they also describe a hierarchical search space. For this search space, 6 different level 2 motifs are created,
+each with 4 nodes. Then a level 3 motif is created with 5 nodes, where the edges between the nodes are one of the 6 level 2 motifs. This level 3 motif is stacked
+in the same way as the level 2 motif in the flat search space to form the final architecture. We did not include this search space in our results as most architectures
+in this space led to unstable training runs.
+
+
